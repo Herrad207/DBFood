@@ -162,21 +162,4 @@ Xem chi tiết mô tả từng file trong [FILES.md](./FILES.md).
 
 ---
 
-## 8. Tài liệu kèm theo
-
-- **Báo cáo kỹ thuật chi tiết:** `BaoCaoKyThuat_HoMauCuong_B22DCAT039.docx` (nộp riêng cho thầy).
-- **Mô tả file chi tiết:** [FILES.md](./FILES.md)
-
----
-
-## 9. Liên hệ
-
-| | |
-|---|---|
-| Email | cuonghm.b22cn039@stu.ptit.edu.vn |
-| GitHub | @herrad (sẽ cập nhật) |
-
----
-
-*Hà Nội, tháng 5 năm 2026*
 "# DBFood" 

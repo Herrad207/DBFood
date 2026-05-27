@@ -42,26 +42,36 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * Fragment hiển thị chi tiết sản phẩm, quản lý chức năng thêm giỏ hàng, 
+ * mua ngay, yêu thích sản phẩm và xem danh sách đánh giá.
+ */
 public class ProductDetailFragment extends Fragment {
 
     private ProductViewModel viewModel;
 
-    private ViewPager2   vpImages;
-    private TextView     tvName, tvPrice, tvSalePrice, tvSold, tvStock, tvRating, tvDesc;
-    private TextView     tvReviewSummary, tvNoReviews;
+    private ViewPager2    vpImages;
+    private TextView      tvName, tvPrice, tvSalePrice, tvSold, tvStock, tvRating, tvDesc;
+    private TextView      tvReviewSummary, tvNoReviews;
     private RecyclerView rvReviews;
-    private Button       btnBuy, btnAddCart;
+    private Button        btnBuy, btnAddCart;
     private ImageButton  btnBack, btnWishlist;
 
     private ReviewAdapter reviewAdapter;
     private final BrowsingHistoryRepository browsingHistoryRepo = new BrowsingHistoryRepository();
-    private boolean isInWishlist = false;
+    private boolean isInWishlist = false; // Trạng thái sản phẩm có nằm trong danh sách yêu thích không
 
+    /**
+     * API NGOÀI (Firebase Auth): Lấy UID của người dùng đang đăng nhập hiện tại
+     */
     private String getCurrentUserId() {
         FirebaseUser user = FirebaseAuth.getInstance().getCurrentUser();
         return user != null ? user.getUid() : null;
     }
 
+    /**
+     * Khởi tạo và nạp cấu trúc layout giao diện cho Fragment
+     */
     @Nullable
     @Override
     public View onCreateView(@NonNull LayoutInflater inflater,
@@ -70,21 +80,26 @@ public class ProductDetailFragment extends Fragment {
         return inflater.inflate(R.layout.fragment_product_detail, container, false);
     }
 
+    /**
+     * Thiết lập các thành phần điều khiển UI, lắng nghe dữ liệu từ ViewModel 
+     * và xử lý các sự kiện click tương tác
+     */
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle savedInstanceState) {
         super.onViewCreated(view, savedInstanceState);
 
-        bindViews(view);
-        setupReviewsList();
+        bindViews(view);         // Ánh xạ View
+        setupReviewsList();      // Cấu hình danh sách đánh giá
         viewModel = new ViewModelProvider(requireActivity()).get(ProductViewModel.class);
 
+        // Lắng nghe dữ liệu sản phẩm được chọn từ ProductListFragment truyền qua ViewModel
         viewModel.getSelected().observe(getViewLifecycleOwner(), product -> {
             if (product != null) {
-                bindProduct(product);
-                loadReviews(product.getProductId());
-                checkWishlistStatus(product.getProductId());
+                bindProduct(product);              // Gán dữ liệu lên giao diện
+                loadReviews(product.getProductId());// Tải danh sách đánh giá sản phẩm
+                checkWishlistStatus(product.getProductId()); // Kiểm tra trạng thái nút yêu thích
 
-                // Ghi lại lượt xem sản phẩm cho AI chatbot context
+                // API NGOÀI: Ghi lại lịch sử lượt xem sản phẩm của người dùng hỗ trợ AI gợi ý context
                 String uid = getCurrentUserId();
                 if (uid != null) {
                     browsingHistoryRepo.recordView(uid,
@@ -95,11 +110,12 @@ public class ProductDetailFragment extends Fragment {
             }
         });
 
+        // Xử lý sự kiện nhấn nút quay lại màn hình trước đó
         btnBack.setOnClickListener(v ->
                 Navigation.findNavController(requireView()).popBackStack());
 
         // ═══════════════════════════════════════════
-        // NÚT ❤ YÊU THÍCH
+        // NÚT YÊU THÍCH (❤)
         // ═══════════════════════════════════════════
         btnWishlist.setOnClickListener(v -> {
             Product product = viewModel.getSelected().getValue();
@@ -111,17 +127,18 @@ public class ProductDetailFragment extends Fragment {
                 return;
             }
 
+            // API NGOÀI (Firebase Database): Tham chiếu đến nút yêu thích của user hiện tại
             DatabaseReference ref = FirebaseDatabase.getInstance()
                     .getReference("wishlists").child(userId).child(product.getProductId());
 
             if (isInWishlist) {
-                // Đang yêu thích → xoá
+                // Nếu đang yêu thích -> Gọi API xóa khỏi danh sách yêu thích
                 ref.removeValue();
                 isInWishlist = false;
                 updateWishlistIcon();
                 Toast.makeText(getContext(), "Đã xoá khỏi yêu thích", Toast.LENGTH_SHORT).show();
             } else {
-                // Chưa yêu thích → thêm
+                // Nếu chưa yêu thích -> Gọi API lưu timestamp thời gian thêm vào mục yêu thích
                 ref.setValue(System.currentTimeMillis());
                 isInWishlist = true;
                 updateWishlistIcon();
@@ -147,6 +164,7 @@ public class ProductDetailFragment extends Fragment {
                 return;
             }
 
+            // API NGOÀI (Firebase Database): Tham chiếu và truy vấn kiểm tra sản phẩm trong giỏ hàng
             DatabaseReference cartRef = FirebaseDatabase.getInstance()
                     .getReference("carts").child(userId);
 
@@ -157,16 +175,19 @@ public class ProductDetailFragment extends Fragment {
                             double price = getProductPrice(product);
 
                             if (snapshot.exists()) {
+                                // Nếu sản phẩm đã tồn tại trong giỏ hàng -> Tăng số lượng lên 1
                                 for (DataSnapshot child : snapshot.getChildren()) {
                                     Integer qty = child.child("quantity").getValue(Integer.class);
                                     child.getRef().child("quantity").setValue((qty != null ? qty : 0) + 1);
                                 }
                             } else {
+                                // Nếu sản phẩm chưa có trong giỏ hàng -> Thêm item mới
                                 String key = cartRef.push().getKey();
                                 if (key == null) return;
                                 cartRef.child(key).setValue(buildCartItem(product, price));
                             }
 
+                            // Chuyển hướng trực tiếp sang màn hình Thanh toán (CheckoutActivity)
                             if (isAdded()) {
                                 Intent intent = new Intent(requireContext(), CheckoutActivity.class);
                                 intent.putExtra("TOTAL_PRICE", price);
@@ -202,7 +223,7 @@ public class ProductDetailFragment extends Fragment {
             DatabaseReference cartRef = FirebaseDatabase.getInstance()
                     .getReference("carts").child(userId);
 
-            // Đọc stock mới nhất trước khi thêm
+            // API NGOÀI (Firebase Database): Đọc số lượng tồn kho (stock) thời gian thực mới nhất trước khi thêm
             FirebaseDatabase.getInstance().getReference("products")
                     .child(product.getProductId()).child("stock")
                     .addListenerForSingleValueEvent(new ValueEventListener() {
@@ -215,6 +236,7 @@ public class ProductDetailFragment extends Fragment {
                             }
                             int currentStock = stock;
 
+                            // Kiểm tra giỏ hàng để cập nhật số lượng hoặc thêm mới an toàn, đối chiếu với tồn kho
                             cartRef.orderByChild("productId").equalTo(product.getProductId())
                                     .addListenerForSingleValueEvent(new ValueEventListener() {
                                         @Override
@@ -223,6 +245,7 @@ public class ProductDetailFragment extends Fragment {
                                                 for (DataSnapshot child : snapshot.getChildren()) {
                                                     Integer qty = child.child("quantity").getValue(Integer.class);
                                                     int newQty = (qty != null ? qty : 0) + 1;
+                                                    // Kiểm tra nếu vượt quá số lượng hàng tồn kho
                                                     if (newQty > currentStock) {
                                                         Toast.makeText(getContext(),
                                                                 "Không đủ hàng (còn " + currentStock + ")",
@@ -254,7 +277,9 @@ public class ProductDetailFragment extends Fragment {
         });
     }
 
-    // ── Kiểm tra sản phẩm đã trong wishlist chưa ──
+    /**
+     * API NGOÀI (Firebase Database): Kiểm tra xem sản phẩm hiện tại đã được người dùng thêm vào mục yêu thích chưa
+     */
     private void checkWishlistStatus(String productId) {
         String userId = getCurrentUserId();
         if (userId == null) {
@@ -280,23 +305,29 @@ public class ProductDetailFragment extends Fragment {
                 });
     }
 
-    // ── Cập nhật icon ❤ ──
+    /**
+     * Hàm chức năng: Thay đổi bộ lọc màu sắc (Color Filter) của biểu tượng nút yêu thích dựa vào biến trạng thái
+     */
     private void updateWishlistIcon() {
         if (btnWishlist == null) return;
         if (isInWishlist) {
-            // Đỏ = đã yêu thích
-            btnWishlist.setColorFilter(android.graphics.Color.parseColor("#E53935"));
+            btnWishlist.setColorFilter(android.graphics.Color.parseColor("#E53935")); // Đỏ
         } else {
-            // Xám = chưa yêu thích
-            btnWishlist.setColorFilter(android.graphics.Color.parseColor("#9E9E9E"));
+            btnWishlist.setColorFilter(android.graphics.Color.parseColor("#9E9E9E")); // Xám
         }
     }
 
+    /**
+     * Hàm chức năng: Lấy giá bán sản phẩm thực tế (Ưu tiên giá sale nếu hợp lệ)
+     */
     private double getProductPrice(Product product) {
         return (product.getSalePrice() > 0 && product.getSalePrice() < product.getPrice())
                 ? product.getSalePrice() : product.getPrice();
     }
 
+    /**
+     * Hàm chức năng: Tạo cấu trúc dữ liệu Map để đẩy thông tin sản phẩm lên nút giỏ hàng trên Firebase
+     */
     private Map<String, Object> buildCartItem(Product product, double price) {
         String imageUrl = (product.getImages() != null && !product.getImages().isEmpty())
                 ? product.getImages().get(0) : "";
@@ -311,6 +342,9 @@ public class ProductDetailFragment extends Fragment {
         return cartItem;
     }
 
+    /**
+     * Ánh xạ các thành phần giao diện từ tệp XML layout
+     */
     private void bindViews(View v) {
         vpImages        = v.findViewById(R.id.vpProductImages);
         tvName          = v.findViewById(R.id.tvDetailName);
@@ -329,14 +363,15 @@ public class ProductDetailFragment extends Fragment {
         rvReviews       = v.findViewById(R.id.rvReviews);
     }
 
+    /**
+     * Khởi tạo cấu hình nâng cao cho danh sách đánh giá. Vô hiệu hóa tính năng cuộn riêng 
+     * của RecyclerView nhằm mục đích nhường quyền cuộn cho lớp cha NestedScrollView xử lý mượt mà.
+     */
     private void setupReviewsList() {
         reviewAdapter = new ReviewAdapter();
         LinearLayoutManager layoutManager = new LinearLayoutManager(getContext()) {
             @Override
-            public boolean canScrollVertically() {
-                // Disable RecyclerView's own scrolling — let NestedScrollView handle it
-                return false;
-            }
+            public boolean canScrollVertically() { return false; } // Tắt cuộn dọc nội bộ
         };
         rvReviews.setLayoutManager(layoutManager);
         rvReviews.setNestedScrollingEnabled(false);
@@ -344,17 +379,21 @@ public class ProductDetailFragment extends Fragment {
         rvReviews.setAdapter(reviewAdapter);
     }
 
+    /**
+     * Hàm chức năng: Gán và định dạng hiển thị chi tiết sản phẩm lên UI (Giá sale, gạch ngang giá gốc, trạng thái hết hàng)
+     */
     private void bindProduct(Product product) {
         tvName.setText(product.getName());
         tvDesc.setText(product.getDescription());
         tvSold.setText("Đã bán: " + product.getTotalSold());
         tvStock.setText("Còn lại: " + product.getStock());
 
+        // Định dạng hiển thị giá tiền và gạch ngang giá gốc nếu đang trong chương trình sale
         if (product.getSalePrice() > 0 && product.getSalePrice() < product.getPrice()) {
             tvPrice.setVisibility(View.VISIBLE);
             tvSalePrice.setVisibility(View.VISIBLE);
             tvPrice.setText(Product.formatPrice(product.getPrice()));
-            tvPrice.setPaintFlags(tvPrice.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG);
+            tvPrice.setPaintFlags(tvPrice.getPaintFlags() | Paint.STRIKE_THRU_TEXT_FLAG); // Gạch ngang chữ
             tvSalePrice.setText(Product.formatPrice(product.getSalePrice()));
         } else {
             tvPrice.setVisibility(View.GONE);
@@ -363,6 +402,7 @@ public class ProductDetailFragment extends Fragment {
             tvSalePrice.setText(Product.formatPrice(product.getPrice()));
         }
 
+        // Hiển thị điểm số đánh giá trung bình
         if (product.getAvgRating() > 0) {
             tvRating.setVisibility(View.VISIBLE);
             tvRating.setText(String.format("⭐ %.1f  (%d đánh giá)",
@@ -371,7 +411,7 @@ public class ProductDetailFragment extends Fragment {
             tvRating.setVisibility(View.GONE);
         }
 
-        // Disable nút khi hết hàng
+        // Tự động vô hiệu hóa nút bấm và cập nhật nhãn chữ nếu kho sản phẩm bằng 0 (Hết hàng)
         if (product.getStock() <= 0) {
             btnAddCart.setEnabled(false);
             btnAddCart.setText("Hết hàng");
@@ -384,6 +424,7 @@ public class ProductDetailFragment extends Fragment {
             btnBuy.setText("Mua ngay");
         }
 
+        // Đổ danh sách hình ảnh sản phẩm vào ViewPager2 bằng cách tạo Adapter nội bộ nhanh
         if (product.getImages() != null && !product.getImages().isEmpty()) {
             vpImages.setAdapter(new RecyclerView.Adapter<ImageViewHolder>() {
                 @NonNull
@@ -397,6 +438,7 @@ public class ProductDetailFragment extends Fragment {
                 }
                 @Override
                 public void onBindViewHolder(@NonNull ImageViewHolder holder, int pos) {
+                    // API NGOÀI (Glide): Tải ảnh sản phẩm theo vị trí (position) vào ViewPager2
                     Glide.with(holder.img.getContext())
                             .load(product.getImages().get(pos))
                             .placeholder(new android.graphics.drawable.ColorDrawable(
@@ -409,6 +451,9 @@ public class ProductDetailFragment extends Fragment {
         }
     }
 
+    /**
+     * API NGOÀI (Firebase Database): Tải danh sách đánh giá của sản phẩm cụ thể, sắp xếp theo thời gian mới nhất lên đầu
+     */
     private void loadReviews(String productId) {
         if (productId == null || productId.isEmpty()) return;
 
@@ -424,7 +469,7 @@ public class ProductDetailFragment extends Fragment {
                             if (r != null) reviews.add(r);
                         }
 
-                        // Đảo ngược: hiển thị đánh giá mới nhất lên đầu
+                        // Đảo ngược danh sách để hiển thị các đánh giá mới được viết lên trên đầu
                         java.util.Collections.reverse(reviews);
 
                         if (reviews.isEmpty()) {
@@ -437,7 +482,7 @@ public class ProductDetailFragment extends Fragment {
                             tvReviewSummary.setText(reviews.size() + " đánh giá");
                             reviewAdapter.setReviews(reviews);
 
-                            // Force RecyclerView re-measure inside NestedScrollView
+                            // Buộc RecyclerView tính toán lại chiều cao giao diện khi lồng trong NestedScrollView
                             rvReviews.post(() -> {
                                 rvReviews.requestLayout();
                                 rvReviews.invalidate();
@@ -457,6 +502,9 @@ public class ProductDetailFragment extends Fragment {
     // ══════════════════════════════════════════
     // REVIEW ADAPTER
     // ══════════════════════════════════════════
+    /**
+     * Adapter quản lý danh sách và xây dựng View hiển thị bình luận đánh giá động bằng code Java (không qua XML layout)
+     */
     static class ReviewAdapter extends RecyclerView.Adapter<ReviewAdapter.ReviewVH> {
         private List<Review> reviews = new ArrayList<>();
 
@@ -485,14 +533,18 @@ public class ProductDetailFragment extends Fragment {
         @Override
         public int getItemCount() { return reviews.size(); }
 
+        /**
+         * ViewHolder xây dựng giao diện chi tiết cho từng item đánh giá độc lập (Tên, ngày, sao, nội dung bình luận, ảnh/video đính kèm)
+         */
         static class ReviewVH extends RecyclerView.ViewHolder {
             private final android.widget.LinearLayout container;
             ReviewVH(View itemView) { super(itemView); container = (android.widget.LinearLayout) itemView; }
 
             void bind(Review review) {
-                container.removeAllViews();
+                container.removeAllViews(); // Dọn sạch view cũ để tránh hiện tượng trùng lặp view khi tái sử dụng ViewHolder
                 android.content.Context ctx = container.getContext();
 
+                // Tạo TextView hiển thị tên người đánh giá và số sao dạng văn bản kí tự đặc biệt
                 TextView tvHeader = new TextView(ctx);
                 tvHeader.setText(review.getUserName() + "  " + review.getStarsDisplay());
                 tvHeader.setTextSize(14);
@@ -500,6 +552,7 @@ public class ProductDetailFragment extends Fragment {
                 tvHeader.setTypeface(null, android.graphics.Typeface.BOLD);
                 container.addView(tvHeader);
 
+                // Tạo TextView hiển thị ngày tháng đánh giá sản phẩm
                 TextView tvDate = new TextView(ctx);
                 tvDate.setText(review.getFormattedDate());
                 tvDate.setTextSize(12);
@@ -507,6 +560,7 @@ public class ProductDetailFragment extends Fragment {
                 tvDate.setPadding(0, dpToPx(ctx, 2), 0, 0);
                 container.addView(tvDate);
 
+                // Tạo TextView hiển thị nội dung bình luận (nếu có)
                 if (review.getComment() != null && !review.getComment().isEmpty()) {
                     TextView tvComment = new TextView(ctx);
                     tvComment.setText(review.getComment());
@@ -516,7 +570,7 @@ public class ProductDetailFragment extends Fragment {
                     container.addView(tvComment);
                 }
 
-                // Hiển thị ảnh đánh giá (nếu có)
+                // API NGOÀI (Glide): Dựng danh sách và tải hàng loạt hình ảnh đính kèm theo bài đánh giá
                 if (review.getImages() != null && !review.getImages().isEmpty()) {
                     android.widget.LinearLayout imgRow = new android.widget.LinearLayout(ctx);
                     imgRow.setOrientation(android.widget.LinearLayout.HORIZONTAL);
@@ -537,10 +591,10 @@ public class ProductDetailFragment extends Fragment {
                     container.addView(imgRow);
                 }
 
-                // Hiển thị video (nếu có)
+                // Tạo liên kết mở xem video đánh giá từ xa (nếu có) bằng cách gửi Intent Implicit ra ngoài hệ thống
                 if (review.getVideoUrl() != null && !review.getVideoUrl().isEmpty()) {
                     TextView tvVideo = new TextView(ctx);
-                    tvVideo.setText("\u25B6 Xem video đánh giá");
+                    tvVideo.setText("▶ Xem video đánh giá");
                     tvVideo.setTextSize(13);
                     tvVideo.setTextColor(android.graphics.Color.parseColor("#5A4B75"));
                     tvVideo.setPadding(0, dpToPx(ctx, 4), 0, 0);
@@ -553,6 +607,7 @@ public class ProductDetailFragment extends Fragment {
                     container.addView(tvVideo);
                 }
 
+                // Thêm đường kẻ phân cách giữa các bài đánh giá
                 View divider = new View(ctx);
                 divider.setLayoutParams(new android.widget.LinearLayout.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT, 1));
@@ -564,11 +619,17 @@ public class ProductDetailFragment extends Fragment {
             }
         }
 
+        /**
+         * Hàm helper: Chuyển đổi đơn vị kích thước mật độ điểm ảnh tự dựng từ dp sang px
+         */
         private static int dpToPx(android.content.Context ctx, int dp) {
             return (int) (dp * ctx.getResources().getDisplayMetrics().density);
         }
     }
 
+    /**
+     * ViewHolder chứa View độc lập phục vụ lưu trữ hình ảnh cho ViewPager2 banner ảnh sản phẩm
+     */
     static class ImageViewHolder extends RecyclerView.ViewHolder {
         ImageView img;
         ImageViewHolder(ImageView v) { super(v); img = v; }

@@ -16,6 +16,10 @@ import com.google.firebase.database.ValueEventListener;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Lớp Repository quản lý việc tương tác, truy xuất và cập nhật dữ liệu 
+ * (Categories, Banners, Products) với Firebase Realtime Database.
+ */
 public class ProductRepository {
 
     private static final String TAG = "ProductRepository";
@@ -31,6 +35,9 @@ public class ProductRepository {
 
     private final DatabaseReference db;
 
+    /**
+     * Khởi tạo kết nối đến nút gốc của Firebase Realtime Database
+     */
     public ProductRepository() {
         db = FirebaseDatabase.getInstance().getReference();
     }
@@ -39,6 +46,9 @@ public class ProductRepository {
     // CATEGORIES
     // ─────────────────────────────────────────────
 
+    /**
+     * API NGOÀI: Lấy danh sách danh mục sản phẩm, sắp xếp theo thứ tự hiển thị (order) dạng Realtime
+     */
     public void loadCategories(OnSuccessCallback<List<Category>> onSuccess,
                                OnErrorCallback onError) {
         db.child("categories")
@@ -64,6 +74,9 @@ public class ProductRepository {
     // BANNERS
     // ─────────────────────────────────────────────
 
+    /**
+     * API NGOÀI: Lấy danh sách các Banner đang hoạt động (isActive = true), sắp xếp theo thứ tự (order) dạng Realtime
+     */
     public void loadActiveBanners(OnSuccessCallback<List<Banner>> onSuccess,
                                   OnErrorCallback onError) {
         db.child("banners")
@@ -89,6 +102,9 @@ public class ProductRepository {
     // PRODUCTS — parse an toàn, không crash khi data lỗi
     // ─────────────────────────────────────────────
 
+    /**
+     * API NGOÀI: Lấy toàn bộ danh sách sản phẩm đang hoạt động, sắp xếp theo thời gian tạo (createdAt) mới nhất dạng Realtime
+     */
     public void loadProducts(OnSuccessCallback<List<Product>> onSuccess,
                              OnErrorCallback onError) {
         db.child("products")
@@ -110,6 +126,9 @@ public class ProductRepository {
                 });
     }
 
+    /**
+     * API NGOÀI: Lọc danh sách sản phẩm theo ID danh mục cụ thể (categoryId) dạng Realtime
+     */
     public void loadProductsByCategory(String categoryId,
                                        OnSuccessCallback<List<Product>> onSuccess,
                                        OnErrorCallback onError) {
@@ -133,6 +152,9 @@ public class ProductRepository {
                 });
     }
 
+    /**
+     * API NGOÀI: Lấy thông tin chi tiết của một sản phẩm duy nhất theo ID (Chỉ đọc một lần duy nhất, không lắng nghe Realtime)
+     */
     public void getProductDetail(String productId,
                                  OnSuccessCallback<Product> onSuccess,
                                  OnErrorCallback onError) {
@@ -151,22 +173,20 @@ public class ProductRepository {
                 });
     }
 
-    // ─────────────────────────────────────────────
-    // PARSE PRODUCT AN TOÀN
-    // Firebase CustomClassMapper crash khi field List<String>
-    // nhận được String đơn lẻ từ database.
-    // Giải pháp: thử auto-parse trước, nếu fail thì parse thủ công.
-    // ─────────────────────────────────────────────
-
+    /**
+     * Hàm chức năng: Xử lý ép kiểu dữ liệu Product an toàn. 
+     * Nếu cơ chế tự động chuyển đổi của Firebase bị lỗi (do kiểu dữ liệu mảng bị sai format thành chuỗi đơn lẻ), 
+     * hàm sẽ chủ động bắt lỗi (try-catch) và chuyển sang giải pháp đọc, ép kiểu thủ công từng trường để tránh crash ứng dụng.
+     */
     private Product parseProduct(DataSnapshot snap) {
         try {
-            // Thử cách nhanh: auto deserialize
+            // Thử giải tuần tự hóa tự động mặc định của Firebase
             return snap.getValue(Product.class);
         } catch (Exception e) {
-            // Nếu lỗi (thường do images/colors/sizes là String thay vì List)
-            // → parse thủ công từng field
+            // Log cảnh báo dữ liệu sai định dạng cấu trúc danh sách mảng (images/colors/sizes)
             Log.w(TAG, "Auto-parse failed for " + snap.getKey() + ", fallback to manual parse", e);
             try {
+                // Khởi tạo và gán giá trị thủ công một cách an toàn
                 Product p = new Product();
                 p.setProductId(getStr(snap, "productId"));
                 p.setName(getStr(snap, "name"));
@@ -181,11 +201,11 @@ public class ProductRepository {
                 p.setTotalSold(getInt(snap, "totalSold"));
                 p.setCreatedAt(getLng(snap, "createdAt"));
 
-                // Boolean đặc biệt
+                // Xử lý riêng cho kiểu luận lý Boolean tránh NullPointerException
                 Boolean active = snap.child("isActive").getValue(Boolean.class);
                 p.setActive(active != null ? active : true);
 
-                // List fields — xử lý cả String lẫn List
+                // Gán Object thô để các setter an toàn tự xử lý chuyển đổi về List
                 p.setImages(snap.child("images").getValue());
                 p.setColors(snap.child("colors").getValue());
                 p.setSizes(snap.child("sizes").getValue());
@@ -198,7 +218,7 @@ public class ProductRepository {
         }
     }
 
-    // Helper đọc field an toàn
+    // Các hàm Helper đọc dữ liệu từ DataSnapshot và gán giá trị mặc định an toàn nếu trường rỗng (null)
     private String getStr(DataSnapshot snap, String key) {
         Object v = snap.child(key).getValue();
         return v != null ? v.toString() : "";
@@ -219,19 +239,19 @@ public class ProductRepository {
         return v != null ? v : 0L;
     }
 
-    // ─────────────────────────────────────────────
-    // SEARCH (client-side)
-    // ─────────────────────────────────────────────
-
+    /**
+     * Hàm chức năng: Tìm kiếm sản phẩm cục bộ (Client-side) theo tên hoặc thương hiệu sau khi tải hết danh sách sản phẩm về.
+     */
     public void searchProducts(String query,
                                OnSuccessCallback<List<Product>> onSuccess,
                                OnErrorCallback onError) {
         loadProducts(all -> {
             List<Product> result = new ArrayList<>();
-            String lower = removeDiacritics(query);
+            String lower = removeDiacritics(query); // Chuẩn hóa từ khóa tìm kiếm về dạng chữ thường không dấu
             for (Product p : all) {
                 String name  = removeDiacritics(p.getName());
                 String brand = removeDiacritics(p.getBrand());
+                // Kiểm tra chuỗi chứa từ khóa
                 if (name.contains(lower) || brand.contains(lower)) {
                     result.add(p);
                 }
@@ -240,10 +260,13 @@ public class ProductRepository {
         }, onError);
     }
 
-    // Bỏ dấu tiếng Việt
+    // Biểu thức chính quy định dạng để bóc tách các ký tự dấu tiếng Việt
     private static final java.util.regex.Pattern DIACRITICS_PATTERN =
             java.util.regex.Pattern.compile("\\p{InCombiningDiacriticalMarks}+");
 
+    /**
+     * Hàm chức năng: Chuẩn hóa chuỗi tiếng Việt thành chuỗi không dấu phục vụ tác vụ tìm kiếm chính xác
+     */
     private static String removeDiacritics(String input) {
         if (input == null) return "";
         String replaced = input.replace('đ', 'd').replace('Đ', 'D');
@@ -255,19 +278,25 @@ public class ProductRepository {
     // ADMIN
     // ─────────────────────────────────────────────
 
+    /**
+     * API NGOÀI: Tạo một nút ID ngẫu nhiên mới và đẩy thêm dữ liệu sản phẩm lên Firebase
+     */
     public void addProduct(Product product,
                            OnSuccessCallback<String> onSuccess,
                            OnErrorCallback onError) {
-        DatabaseReference ref = db.child("products").push();
+        DatabaseReference ref = db.child("products").push(); // Tạo node ngẫu nhiên
         String newId = ref.getKey() != null ? ref.getKey() : "";
         product.setProductId(newId);
-        product.setCreatedAt(System.currentTimeMillis());
+        product.setCreatedAt(System.currentTimeMillis()); // Đóng dấu thời gian hiện tại
         ref.setValue(product)
                 .addOnSuccessListener(unused -> onSuccess.onSuccess(newId))
                 .addOnFailureListener(e -> onError.onError(
                         e.getMessage() != null ? e.getMessage() : "Lỗi không xác định"));
     }
 
+    /**
+     * API NGOÀI: Ghi đè cập nhật lại toàn bộ thông tin của một sản phẩm dựa trên ID sẵn có trên Firebase
+     */
     public void updateProduct(Product product,
                               OnSuccessCallback<Void> onSuccess,
                               OnErrorCallback onError) {
@@ -278,6 +307,9 @@ public class ProductRepository {
                         e.getMessage() != null ? e.getMessage() : "Lỗi không xác định"));
     }
 
+    /**
+     * API NGOÀI: Xóa mềm sản phẩm bằng cách chỉ cập nhật thuộc tính ẩn "isActive" thành false
+     */
     public void deactivateProduct(String productId,
                                   OnSuccessCallback<Void> onSuccess,
                                   OnErrorCallback onError) {

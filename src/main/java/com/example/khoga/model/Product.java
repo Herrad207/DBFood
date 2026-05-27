@@ -4,26 +4,31 @@ import com.google.firebase.database.PropertyName;
 import java.util.ArrayList;
 import java.util.List;
 
+/**
+ * Lớp Model đại diện cho thông tin chi tiết của một sản phẩm (Product)
+ */
 public class Product {
 
-    private String productId;
-    private String name;
-    private String description;
-    private String categoryId;
-    private String brand;
-    private double price;
-    private double salePrice;
-    private List<String> images;
-    private List<String> colors;
-    private List<String> sizes;
-    private int stock;
-    private double avgRating;
-    private int totalReviews;
-    private int totalSold;
-    private boolean isActive;
-    private long createdAt;
+    private String productId;     // ID duy nhất của sản phẩm
+    private String name;          // Tên sản phẩm
+    private String description;   // Mô tả chi tiết sản phẩm
+    private String categoryId;    // ID danh mục mà sản phẩm thuộc về
+    private String brand;         // Thương hiệu sản phẩm
+    private double price;         // Giá gốc của sản phẩm
+    private double salePrice;     // Giá khuyến mãi (nếu có)
+    private List<String> images;  // Danh sách URL hình ảnh của sản phẩm
+    private List<String> colors;  // Danh sách các màu sắc lựa chọn
+    private List<String> sizes;   // Danh sách các kích cỡ lựa chọn
+    private int stock;            // Số lượng hàng còn trong kho
+    private double avgRating;     // Điểm đánh giá trung bình (ví dụ: 4.5)
+    private int totalReviews;     // Tổng số lượt đánh giá
+    private int totalSold;        // Tổng số lượng sản phẩm đã bán
+    private boolean isActive;     // Trạng thái hiển thị (bán/ngừng bán)
+    private long createdAt;       // Thời gian tạo sản phẩm (Timestamp)
 
-    // Constructor rỗng BẮT BUỘC cho Firebase
+    /**
+     * Constructor mặc định không tham số (Bắt buộc phải có để Firebase tự động gán dữ liệu)
+     */
     public Product() {
         this.images   = new ArrayList<>();
         this.colors   = new ArrayList<>();
@@ -31,6 +36,9 @@ public class Product {
         this.isActive = true;
     }
 
+    /**
+     * Constructor đầy đủ tham số để khởi tạo nhanh đối tượng Product
+     */
     public Product(String productId, String name, String description,
                    String categoryId, String brand,
                    double price, double salePrice,
@@ -56,7 +64,7 @@ public class Product {
         this.createdAt    = createdAt;
     }
 
-    // Getters
+    // Các hàm Getter lấy giá trị thuộc tính
     public String getProductId()    { return productId; }
     public String getName()         { return name; }
     public String getDescription()  { return description; }
@@ -73,10 +81,13 @@ public class Product {
     public int getTotalSold()       { return totalSold; }
     public long getCreatedAt()      { return createdAt; }
 
+    /**
+     * TÁC VỤ GỌI THƯ VIỆN NGOÀI (Firebase): @PropertyName ánh xạ đúng tên trường "isActive" trên Realtime Database
+     */
     @PropertyName("isActive")
     public boolean isActive()       { return isActive; }
 
-    // Setters
+    // Các hàm Setter cập nhật giá trị thuộc tính cơ bản
     public void setProductId(String v)      { this.productId = v; }
     public void setName(String v)           { this.name = v; }
     public void setDescription(String v)    { this.description = v; }
@@ -90,12 +101,14 @@ public class Product {
     public void setTotalSold(int v)         { this.totalSold = v; }
     public void setCreatedAt(long v)        { this.createdAt = v; }
 
+    /**
+     * TÁC VỤ GỌI THƯ VIỆN NGOÀI (Firebase): Định danh chính xác tên trường "isActive" khi cập nhật lên Firebase
+     */
     @PropertyName("isActive")
     public void setActive(boolean v)        { this.isActive = v; }
 
-    // ── QUAN TRỌNG: Setter an toàn cho List fields ──
-    // Firebase có thể trả về String thay vì List khi data không đúng format
-    // Các setter này xử lý cả 2 trường hợp để tránh crash
+    // ── TÁC VỤ GỌI THƯ VIỆN NGOÀI (Firebase): Các hàm Setter an toàn nhận Object đầu vào ──
+    // Nhận kiểu Object từ Firebase để chủ động ép kiểu, tránh crash ứng dụng khi dữ liệu sai format trên Database
 
     @SuppressWarnings("unchecked")
     public void setImages(Object v) {
@@ -112,40 +125,49 @@ public class Product {
         this.sizes = safeToList(v);
     }
 
-    // Hàm chuyển đổi an toàn: nhận cả String, List, hoặc null
+    /**
+     * Hàm chức năng nội bộ: Chuyển đổi kiểu dữ liệu Object từ Firebase về dạng List một cách an toàn
+     */
     @SuppressWarnings("unchecked")
     private List<String> safeToList(Object value) {
         if (value == null) {
             return new ArrayList<>();
         }
+        // Trường hợp chuẩn: Firebase trả về cấu trúc mảng (List)
         if (value instanceof List) {
-            // Trường hợp bình thường: Firebase trả về List
             List<String> result = new ArrayList<>();
             for (Object item : (List<?>) value) {
                 if (item != null) result.add(item.toString());
             }
             return result;
         }
+        // Trường hợp lỗi dữ liệu: Firebase trả về một phần tử đơn lẻ (String) thay vì một mảng
         if (value instanceof String) {
-            // Trường hợp lỗi data: Firebase trả về String đơn lẻ
             List<String> result = new ArrayList<>();
             String s = (String) value;
             if (!s.isEmpty()) result.add(s);
             return result;
         }
-        // Trường hợp khác (Map, Number...): bỏ qua
         return new ArrayList<>();
     }
 
-    // Helper
+    /**
+     * Hàm chức năng: Lấy link hình ảnh đầu tiên trong danh sách để làm ảnh đại diện sản phẩm
+     */
     public String getFirstImage() {
         return (images != null && !images.isEmpty()) ? images.get(0) : "";
     }
 
+    /**
+     * Hàm chức năng: Lấy giá bán thực tế (trả về giá khuyến mãi nếu hợp lệ, ngược lại trả về giá gốc)
+     */
     public double getDisplayPrice() {
         return (salePrice > 0 && salePrice < price) ? salePrice : price;
     }
 
+    /**
+     * Hàm tĩnh (Static): Định dạng lại số tiền sang định dạng tiền tệ có dấu chấm phân cách (ví dụ: 50.000đ)
+     */
     public static String formatPrice(double price) {
         String raw = String.valueOf((long) price);
         StringBuilder sb = new StringBuilder();
